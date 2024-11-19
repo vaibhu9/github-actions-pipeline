@@ -1,0 +1,76 @@
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+permissions:
+  contents: write
+  security-events: write
+  actions: read
+  checks: write
+  packages: write
+
+jobs:
+  dependency-check:
+    name: SCA Scan OWASP Dependency Check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Set up JDK 21
+      uses: actions/setup-java@v4
+      with:
+        java-version: '21'
+        distribution: 'microsoft'
+
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@417ae3ccd767c252f5661f1ace9f835f9654f2b5 
+      with:
+        gradle-version: 8.5
+
+    - name: Grant execute permission for gradlew
+      run: chmod +x ./gradlew
+
+    - name: Build with Gradle Wrapper
+      run: ./gradlew build -x test
+
+    - name: Run OWASP Dependency-Check
+      uses: dependency-check/Dependency-Check_Action@main
+      env:
+        JAVA_HOME: /opt/jdk
+      with:
+        project: 'github-actions-pipeline'
+        path: '.'
+        format: 'SARIF'
+        out: 'reports'
+
+    - name: Upload SARIF Report to Artifact
+      uses: actions/upload-artifact@v3
+      with:
+         name: Depcheck SARIF report
+         path: ./reports/dependency-check-report.sarif
+    
+    - name: Log in to GitHub Container Registry
+      uses: docker/login-action@v2
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
+
+    - name: Package SARIF Report into a Container
+      run: |
+        mkdir -p reports
+        cp reports/dependency-check-report.sarif .
+        echo "FROM alpine" > Dockerfile
+        echo "COPY dependency-check-report.sarif /dependency-check-report.sarif" >> Dockerfile
+        echo "CMD [\"cat\", \"/dependency-check-report.sarif\"]" >> Dockerfile
+        docker build -t ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}/dependency-check-report:latest .
+
+    - name: Push Reports to GitHub Container Registry
+      run: |
+        docker push ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}/dependency-check-report:latest
