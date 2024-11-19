@@ -46,7 +46,7 @@ jobs:
       with:
         project: 'github-actions-pipeline'
         path: '.'
-        format: 'SARIF,HTML'
+        format: 'ALL'
         out: 'reports'
 
     - name: Upload SARIF Report to Artifact
