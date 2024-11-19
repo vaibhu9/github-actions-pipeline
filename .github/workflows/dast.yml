@@ -87,6 +87,16 @@ jobs:
           name: DAST_Report.html
           path: ./report_html.html
 
+      - name: Package JSON Report into a Container
+        run: |
+          echo "FROM alpine" > Dockerfile
+          echo "COPY report_json.json /report_json.json" >> Dockerfile
+          echo "CMD [\"cat\", \"/report_json.json\"]" >> Dockerfile
+          docker build -t ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}/dast-report:latest .
+
+      - name: Push JSON Report to GitHub Container Registry
+        run: docker push ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}/dast-report:latest
+
       - name: stop docker
         if: always()
         run: |
