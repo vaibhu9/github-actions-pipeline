@@ -9,6 +9,7 @@ permissions:
   security-events: write
   actions: read
   checks: write
+  packages: write
 
 jobs:
   dast-scan:
@@ -27,10 +28,9 @@ jobs:
           distribution: 'microsoft'
 
       - name: Setup Gradle
-        uses: gradle/gradle-build-action@v2
-
-      - name: Clear Gradle cache
-        run: rm -rf $HOME/.gradle/caches/
+        uses: gradle/actions/setup-gradle@417ae3ccd767c252f5661f1ace9f835f9654f2b5 
+        with:
+          gradle-version: 8.5
 
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew
@@ -44,15 +44,21 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
+
+      - name: Install Docker Compose
+        run: |
+            sudo curl -L "https://github.com/docker/compose/releases/download/$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep -Po '"tag_name": "\K.*?(?=")')/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+            sudo chmod +x /usr/local/bin/docker-compose
       
       - name: Run application in container to scan with ZAP
         run: |
-          docker rm -f github-action-pipeline github-action-pipeline-db || true
-          docker-compose up
-        # docker run -d -p 8080:9090 --name github-action-pipeline vaibhavshejol/github-actions-pipeline:latest
-
-      - name: Wait 15 seconds to start application
-        run: sleep 15
+          docker rm -f github-action-pipeline || ture
+          docker rm -f github-action-pipeline-db || true
+          docker-compose up -d
+        # docker run -d -p 9090:9090 --name github-action-pipeline ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}:latest
+    
+      - name: Wait 10 seconds to start application
+        run: sleep 10
 
       - name: Application container logs
         run: docker logs github-action-pipeline
@@ -69,6 +75,12 @@ jobs:
           cmd_options: '-a -j -l WARN -r report_html.html -w report_md.md -J report_json.json -z "-addoninstallall" '
           allow_issue_writing: true
 
+      - name: Upload json report
+        uses: actions/upload-artifact@v3
+        with:
+          name: DAST_Report.json
+          path: ./report_json.json
+
       - name: Upload html report
         uses: actions/upload-artifact@v3
         with:
@@ -79,4 +91,7 @@ jobs:
         if: always()
         run: |
           docker-compose down
-          docker stop github-action-pipeline && docker rm github-action-pipeline && docker container prune --force && docker image prune --force
+          docker stop github-action-pipeline || true
+          docker rm github-action-pipeline || true
+          docker container prune --force || true
+          docker image prune --force || true
